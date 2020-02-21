@@ -1,0 +1,340 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: OTA Infra which is responsible create dynamic group and jobs for thing which We want to perform OTA
+Parameters:
+  LambdaRunTime:
+    Type: String
+  LambdaExecutionMemory:
+    Description: lambda function is allocated CPU proportional to the memory configured
+    Type: Number
+    MinValue: 128
+    MaxValue: 1024
+  LambdaTimeout:
+    Description: lambda function maximum execution time
+    Type: Number
+    MinValue: 5
+    MaxValue: 180
+  LambdaBasicExecutionRole:
+    Type: String
+    Default: arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  EmpRecordsTableDDBTableMaxScalableWriteCapacity:
+    Type: String
+  EmpRecordsTableDDBTableMinScalableWriteCapacity:
+    Type: String
+  EmpRecordsTableDDBTableMaxScalableReadCapacity:
+    Type: String
+  EmpRecordsTableDDBTableMinScalableReadCapacity:
+    Type: String
+  EmpRecordsTableReadCapacity:
+    Type: String
+  EmpRecordsTableWriteCapacity:
+    Type: String
+  EmpRecordsHashKey:
+    Type: String
+    Default: "emp_id"
+  EmpRecordsRangeKey:
+    Type: String
+    Default: "email_id"
+  ddbSecureApiPrefix:
+    Type: String
+    Default: "ddbapi-endpoint"
+Globals:
+  Function:
+    Timeout: !Ref LambdaTimeout
+    Runtime: !Ref LambdaRunTime
+  Api:
+    Cors:
+      AllowMethods: "'OPTIONS,POST,GET,PUT,DELETE'"
+      AllowHeaders: "'Content-Type'"
+      AllowOrigin: "'*'"
+Mappings:
+  DDBManagerZoneId:
+    Environment:
+      "123456789011": YYYYYYYYYYYYYY
+      "123456789012": ZZZZZZZZZZZZZZ
+      "123456789013": XXXXXXXXXXXXXX
+  DDBRecordSet:
+    Environment:
+      "123456789011": XXX.YYYYYY.CCCC.com
+      "123456789012": XXX.ZZZZZZ.XXXX.com
+      "123456789013": XXX.AAAAAA.ZZZZ.com
+  AcmCertificateMap:
+    Environment:
+      "123456789011": arn:aws:acm:us-east-1:123456789011:certificate/a6fe6e17-c817-4ca3-aa87-94e519009a24
+      "123456789012": arn:aws:acm:us-east-1:123456789012:certificate/36b91662-ad5a-474b-9288-191afe428a36
+      "123456789013": arn:aws:acm:us-east-1:123456789013:certificate/e57f3d95-7a88-4f05-b0be-72088378e0ba
+Resources:
+  #Creating Functions & APIs
+  DDBGetOperation:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.getOne
+      MemorySize: !Ref LambdaExecutionMemory
+      CodeUri: ../../lambda-codebase/ddbManager/
+      Role: !GetAtt DDBGetFunctionRole.Arn
+      Environment:
+        Variables:
+          SOURCE_ACCOUNT: !Ref AWS::AccountId
+          DEPLOY_REGION: !Ref AWS::Region
+      Events:
+        GetResource:
+          Type: Api
+          Properties:
+            Path: /ddbManager/get
+            Method: get
+  DDBPostOperation:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.create
+      MemorySize: !Ref LambdaExecutionMemory
+      CodeUri: ../../lambda-codebase/ddbManager/
+      Role: !GetAtt DDBPostFunctionRole.Arn
+      Environment:
+        Variables:
+          SOURCE_ACCOUNT: !Ref AWS::AccountId
+          DEPLOY_REGION: !Ref AWS::Region
+      Events:
+        GetResource:
+          Type: Api
+          Properties:
+            Path: /ddbManager/put
+            Method: post
+  DDBGetFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      ManagedPolicyArns:
+        - !Ref LambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DDBGetFunctionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchGetItem
+                  - dynamodb:GetRecords
+                Resource: !GetAtt EmpRecordsTable.Arn
+  DDBPostFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      ManagedPolicyArns:
+        - !Ref LambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DDBPostFunctionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                  - dynamodb:UpdateTable
+                  - dynamodb:DeleteItem
+                  - dynamodb:BatchWriteItem
+                Resource: !GetAtt EmpRecordsTable.Arn
+  #Createing DDB
+  EmpRecordsTable:
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: !Ref EmpRecordsHashKey
+          AttributeType: "S"
+        - AttributeName: !Ref EmpRecordsRangeKey
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: !Ref EmpRecordsHashKey
+          KeyType: "HASH"
+        - AttributeName: !Ref EmpRecordsRangeKey
+          KeyType: "RANGE"
+      ProvisionedThroughput:
+        ReadCapacityUnits: !Ref EmpRecordsTableReadCapacity
+        WriteCapacityUnits: !Ref EmpRecordsTableWriteCapacity
+  ReadCapacityScalableTargetEmpRecordsTable:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !Ref EmpRecordsTableDDBTableMaxScalableReadCapacity
+      MinCapacity: !Ref EmpRecordsTableDDBTableMinScalableReadCapacity
+      ResourceId: !Join [/, [table, !Ref EmpRecordsTable]]
+      RoleARN: !GetAtt ScalingRole.Arn
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      ServiceNamespace: dynamodb
+  WriteCapacityScalableTargetEmpRecordsTable:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !Ref EmpRecordsTableDDBTableMaxScalableWriteCapacity
+      MinCapacity: !Ref EmpRecordsTableDDBTableMinScalableWriteCapacity
+      ResourceId: !Join [/, [table, !Ref EmpRecordsTable]]
+      RoleARN: !GetAtt ScalingRole.Arn
+      ScalableDimension: dynamodb:table:WriteCapacityUnits
+      ServiceNamespace: dynamodb
+  ReadScalingPolicyEmpRecordsTable:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${AWS::StackName}-ReadAutoScalingPolicy"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ReadCapacityScalableTargetEmpRecordsTable
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 50.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+  WriteScalingPolicyEmpRecordsTable:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${AWS::StackName}-WriteAutoScalingPolicy"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref WriteCapacityScalableTargetEmpRecordsTable
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 50.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+  ScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "application-autoscaling.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "dynamodb:DescribeTable"
+                  - "dynamodb:UpdateTable"
+                  - "cloudwatch:PutMetricAlarm"
+                  - "cloudwatch:DescribeAlarms"
+                  - "cloudwatch:GetMetricStatistics"
+                  - "cloudwatch:SetAlarmState"
+                  - "cloudwatch:DeleteAlarms"
+                Resource: "*"
+
+  #Createing CDN Distribution
+  ddbManagerDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      Tags:
+        - Key: Services
+          Value: DDB-Manager
+      DistributionConfig:
+        Aliases:
+          - !Join [
+              "-",
+              [
+                !Ref "AWS::Region",
+                !Join [
+                  ".",
+                  [
+                    !Ref ddbSecureApiPrefix,
+                    !FindInMap [
+                      "DDBRecordSet",
+                      "Environment",
+                      !Ref "AWS::AccountId",
+                    ],
+                  ],
+                ],
+              ],
+            ]
+        Origins:
+          - DomainName: !Sub "${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com"
+            Id: ddbManagerAPIOrigin
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+            OriginPath: "/Prod"
+        Enabled: true
+        Comment: DDB Manager API endpoint
+        PriceClass: PriceClass_200
+        ViewerCertificate:
+          AcmCertificateArn:
+            !FindInMap [AcmCertificateMap, Environment, !Ref "AWS::AccountId"]
+          SslSupportMethod: "sni-only"
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+            - OPTIONS
+          DefaultTTL: 86400
+          TargetOriginId: ddbManagerAPIOrigin
+          SmoothStreaming: false
+          ForwardedValues:
+            QueryString: true
+            Cookies:
+              Forward: all
+          ViewerProtocolPolicy: allow-all
+  ddbManagerDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId:
+        !FindInMap ["DDBManagerZoneId", "Environment", !Ref "AWS::AccountId"]
+      Name:
+        !Join [
+          "-",
+          [
+            !Ref "AWS::Region",
+            !Join [
+              ".",
+              [
+                !Ref ddbSecureApiPrefix,
+                !FindInMap [
+                  "DDBRecordSet",
+                  "Environment",
+                  !Ref "AWS::AccountId",
+                ],
+              ],
+            ],
+          ],
+        ]
+      Type: CNAME
+      TTL: "300"
+      ResourceRecords:
+        - !GetAtt ddbManagerDistribution.DomainName
+Outputs:
+  EmpRecordsTableResult:
+    Value: !Ref EmpRecordsTable
+    Export:
+      Name: !Sub "${AWS::StackName}-EmpRecordsTable"
+  apiUrl:
+    Description: REST API ID
+    Value: !Sub
+      - https://${apiGatewayID}.execute-api.${region}.amazonaws.com
+      - { apiGatewayID: !Ref ServerlessRestApi, region: !Ref "AWS::Region" }
+  ApiSecureURL:
+    Value: !Join
+      - ""
+      - - "https://"
+        - !Ref ddbManagerDNSRecord

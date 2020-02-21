@@ -1,0 +1,27 @@
+extends: 'airbnb-base'
+plugins:
+  - promise
+env:
+  'node': true
+rules:
+  'no-extend-native': off
+  'no-unused-vars': warn
+  'strict': off
+  'comma-dangle': off
+  'no-console': off
+  'global-require': error
+  'no-sync': error
+  'no-eval': error
+  'camelcase': warn
+  'complexity': [error, 4]
+  'max-statements': [error, 11]
+  'max-depth': [error, 4]
+  'promise/always-return': error
+  'promise/no-return-wrap': error
+  'promise/param-names': error
+  'promise/catch-or-return': error
+  'promise/no-native': off
+  'promise/no-nesting': error
+  'promise/no-promise-in-callback': warn
+  'promise/no-callback-in-promise': off
+  'promise/avoid-new': warn

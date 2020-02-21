@@ -1,0 +1,17 @@
+{
+    "Parameters": {
+        "LambdaRunTime": "nodejs12.x",
+        "LambdaExecutionMemory": "512",
+        "LambdaTimeout": "15",
+        "EmpRecordsTableDDBTableMaxScalableWriteCapacity": "1000",
+        "EmpRecordsTableDDBTableMinScalableWriteCapacity": "10",
+        "EmpRecordsTableDDBTableMaxScalableReadCapacity": "1000",
+        "EmpRecordsTableDDBTableMinScalableReadCapacity": "10",
+        "EmpRecordsTableReadCapacity": "5",
+        "EmpRecordsTableWriteCapacity": "5",
+        "LambdaBasicExecutionRole": "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "EmpRecordsHashKey": "emp_id",
+        "EmpRecordsRangeKey": "email_id",
+        "ddbSecureApiPrefix": "ddbapi-endpoint"
+    }
+}

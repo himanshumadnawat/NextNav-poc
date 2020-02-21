@@ -1,0 +1,29 @@
+{
+  "dev": {
+    "regions": [
+      "us-east-1",
+      "us-west-2"
+    ],
+    "stackName": "NextNav-Service-Pipeline-CD",
+    "template": "pipeline-deploy-cfn.yml",
+    "bucketPrefix": "nextnav-poc-cd-source"
+  },
+  "test": {
+    "regions": [
+      "us-east-1",
+      "us-west-2"
+    ],
+    "stackName": "NextNav-Service-Pipeline-CD",
+    "template": "pipeline-deploy-cfn.yml",
+    "bucketPrefix": "nextnav-poc-cd-source"
+  },
+  "prod": {
+    "regions": [
+      "us-east-1",
+      "us-west-2"
+    ],
+    "stackName": "NextNav-Service-Pipeline-CD",
+    "template": "pipeline-deploy-cfn.yml",
+    "bucketPrefix": "nextnav-poc-cd-source"
+  }
+}

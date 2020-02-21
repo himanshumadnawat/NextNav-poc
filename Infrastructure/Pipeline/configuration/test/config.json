@@ -1,0 +1,34 @@
+[
+  {
+    "ParameterKey": "SourceAndArtifactBucketPrefix",
+    "ParameterValue": "nextnav-poc-cd-source"
+  },
+  {
+    "ParameterKey": "ChangeSetReportName",
+    "ParameterValue": "report.html"
+  },
+  {
+    "ParameterKey": "MailId",
+    "ParameterValue": "abcd@xzy.com"
+  },
+  {
+    "ParameterKey": "IsApprovalRequired",
+    "ParameterValue": "True"
+  },
+  {
+    "ParameterKey": "SourceBuketKey",
+    "ParameterValue": "project.zip"
+  },
+  {
+    "ParameterKey": "CodeBuildComputeType",
+    "ParameterValue": "BUILD_GENERAL1_SMALL"
+  },
+  {
+    "ParameterKey": "CodeBuildImage",
+    "ParameterValue": "aws/codebuild/standard:3.0"
+  },
+  {
+    "ParameterKey": "DeployStackName",
+    "ParameterValue": "NextNav-deploy-Stack"
+  }
+]

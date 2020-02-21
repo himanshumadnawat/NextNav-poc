@@ -1,0 +1,32 @@
+{
+  "name": "nextnav-poc-service",
+  "version": "1.0.0",
+  "description": "NextNav POC Service project :: Script for Implementing Continuous Integration ",
+  "scripts": {
+    "postinstall": "npm run build-lambdas",
+    "build-lambdas": "for DIR in $(find ./lambda-codebase/** -maxdepth 0 -type d -print); do (cd $DIR && npm install --unsafe-perm); done",
+    "build-lambdas:prod": "for DIR in $(find ./lambda-codebase/** -maxdepth 0 -type d -print); do (cd $DIR && npm install --only=production); done",
+    "test": "npm run lambda-test",
+    "lambda-test": "mocha --opts ./mocha.opts $(find ./** -type d -name 'node_modules' -prune -o -type f -name *.test.js -print) --reporter mochawesome",
+    "lint": "npm run lambda-lint",
+    "lambda-lint": "eslint --ignore-pattern '**/test/**' --ignore-pattern '**/coverage/**' --ignore-pattern '**/.nyc_output/**' --ignore-pattern '**/node_modules/**'  --ignore-pattern '**/build/**' --ignore-pattern '**/templates/**' --ignore-pattern '**/docs/**' ./**/lambda-codebase/**/*.js --fix -f node_modules/eslint-detailed-reporter/lib/detailed.js -o report/index.html",
+    "cover": "npm run cover-Lambda",
+    "cover-Lambda": "for DIR in $(find ./lambda-codebase/** -maxdepth 0 -type d -print); do (cd $DIR && npm run cover); done",
+    "cover-report": "npm run cover && istanbul-combine -lcov -b . ./lambda-codebase/**/*coverage.json ./ui-codebase/**/coverage/coverage*.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/himanshumadnawat/NextNav-poc"
+  },
+  "author": "Himanshu Madnawat",
+  "devDependencies": {
+    "eslint": "4.7.2",
+    "eslint-config-airbnb-base": "12.0.0",
+    "eslint-plugin-import": "2.7.0",
+    "eslint-plugin-promise": "3.5.0",
+    "istanbul-combine": "0.3.0"
+  },
+  "dependencies": {
+    "eslint-detailed-reporter": "^0.7.4"
+  }
+}

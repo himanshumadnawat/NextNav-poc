@@ -1,0 +1,28 @@
+version: 0.2
+# Build Specification Reference for CodeBuild Project
+phases:
+  install:
+    runtime-versions:
+      nodejs: 12
+      python: 3.8
+
+  pre_build:
+    commands:
+      - echo "pipeline for bulding in codebuild artifacts for deployment phase"
+
+  build:
+    commands:
+      - npm config set unsafe-perm true
+      - npm run build-lambdas:prod
+      - aws cloudformation package --template-file ./Infrastructure/DeployStacks/deployStack.yml --s3-bucket $BUCKET --output-template-file ./Infrastructure/DeployStacks/output-deployStack.yml
+
+  post_build:
+    commands:
+      - echo Build completed on `date`
+
+artifacts:
+  type: zip
+  files:
+    - ./Infrastructure/DeployStacks/deployStack.yml
+    - ./Infrastructure/DeployStacks/output-deployStack.yml
+    - ./Infrastructure/DeployStacks/params-deployStack.json

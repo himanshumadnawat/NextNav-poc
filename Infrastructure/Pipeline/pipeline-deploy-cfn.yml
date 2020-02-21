@@ -1,0 +1,485 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  SourceBuketKey:
+    Type: String
+  SourceAndArtifactBucketPrefix:
+    Type: String
+  DeployStackName:
+    Type: String
+    Default: NextNav-deploy-Stack
+  CodeBuildComputeType:
+    Type: String
+  CodeBuildImage:
+    Type: String
+  ChangeSetReportName:
+    Description: The parameter holds file name of report created in s3
+    Type: String
+  IsApprovalRequired:
+    Type: String
+    AllowedValues:
+      - "True"
+      - "False"
+  MailId:
+    Description: email id of the subscriber
+    Type: String
+Mappings:
+  EnvironmentNameMap:
+    Environment:
+      "123456789011": dev
+      "123456789012": test
+      "123456789013": prod
+Conditions:
+  NeedPipelineApprovalStage: !Equals [!Ref IsApprovalRequired, True]
+Resources:
+  CodePipelineSourceAndArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join
+        - "-"
+        - - !Ref SourceAndArtifactBucketPrefix
+          - !FindInMap
+            - EnvironmentNameMap
+            - Environment
+            - !Ref AWS::AccountId
+          - !Ref AWS::Region
+      Tags:
+        - Key: Services
+          Value: Deployment
+      VersioningConfiguration:
+        Status: Enabled
+  ApprovalSNSTopic:
+    Type: AWS::SNS::Topic
+    Condition: NeedPipelineApprovalStage
+    Properties:
+      DisplayName: !Sub "Deployment-Approval-${AWS::Region}-${AWS::StackName}"
+  SNSSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: NeedPipelineApprovalStage
+    Properties:
+      Endpoint: !Ref MailId
+      Protocol: email
+      TopicArn: !Ref ApprovalSNSTopic
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "codebuild-${AWS::Region}-${AWS::StackName}"
+      Path: /
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: codepipeline-codebuild-nextnav
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}"
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${AWS::StackName}:*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource:
+                  - !Sub "arn:aws:s3:::${CodePipelineSourceAndArtifactBucket}/"
+                  - !Sub "arn:aws:s3:::${CodePipelineSourceAndArtifactBucket}/*"
+                  - !Sub
+                    - "arn:aws:s3:::${SourceAndArtifactBucketPrefix}-*"
+                    - {
+                        SourceAndArtifactBucketPrefix: !Ref SourceAndArtifactBucketPrefix,
+                      }
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource: "*"
+  CloudFormationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "cfn-nextnav-${AWS::Region}-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: nextnav-codepipeline-deployment
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:*
+                  - iam:*
+                  - cloudwatch:*
+                  - s3:*
+                  - cloudfront:*
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - apigateway:*
+                  - route53:*
+                  - dynamodb:*
+                  - cloudwatch:*
+                  - application-autoscaling:*
+                Resource: "*"
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "codepipeline-nextnav-${AWS::Region}-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: codepipeline-service-nextnav
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${CodePipelineSourceAndArtifactBucket}"
+                  - !Sub "arn:aws:s3:::${CodePipelineSourceAndArtifactBucket}/*"
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource:
+                  - !GetAtt CodeBuild.Arn
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt CloudFormationExecutionRole.Arn
+              - Effect: Allow
+                Action: lambda:*
+                Resource: "*"
+              - !If
+                - NeedPipelineApprovalStage
+                - Effect: Allow
+                  Action: sns:Publish
+                  Resource: !Ref ApprovalSNSTopic
+                - !Ref AWS::NoValue
+            Version: "2012-10-17"
+  CodeBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref AWS::StackName
+      Tags:
+        - Key: Services
+          Value: Deployment
+      ServiceRole: !Ref CodeBuildRole
+      Artifacts:
+        Location: !Ref CodePipelineSourceAndArtifactBucket
+        Type: S3
+      Source:
+        Location: !Sub "${CodePipelineSourceAndArtifactBucket}/${SourceBuketKey}"
+        Type: S3
+        BuildSpec: "Infrastructure/Pipeline/buildspec.yml"
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: !Ref CodeBuildComputeType
+        Image: !Ref CodeBuildImage
+        EnvironmentVariables:
+          - Name: BUCKET
+            Value: !Ref CodePipelineSourceAndArtifactBucket
+          - Name: REGION
+            Value: !Ref AWS::Region
+  pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Ref AWS::StackName
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref CodePipelineSourceAndArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - InputArtifacts: []
+              Name: TemplateSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: "1"
+                Provider: S3
+              OutputArtifacts:
+                - Name: S3Code
+              Configuration:
+                S3Bucket: !Ref CodePipelineSourceAndArtifactBucket
+                PollForSourceChanges: "true"
+                S3ObjectKey: !Ref SourceBuketKey
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - InputArtifacts:
+                - Name: S3Code
+              Name: Deployment-Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              OutputArtifacts:
+                - Name: CFCode
+              Configuration:
+                ProjectName: !Ref AWS::StackName
+              RunOrder: 1
+        - Name: ChangeSetCreate
+          Actions:
+            - InputArtifacts:
+                - Name: CFCode
+                - Name: S3Code
+              Name: Deploy-ChangeSet-Create
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: "1"
+                Provider: CloudFormation
+              OutputArtifacts:
+                - Name: OUT-S3Code-Lambda-ChangeSet-Deploy
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                ChangeSetName: OUT-S3Code-Lambda-ChangeSet
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Ref DeployStackName
+                TemplateConfiguration: CFCode::Infrastructure/DeployStacks/params-deployStack.json
+                TemplatePath: CFCode::Infrastructure/DeployStacks/output-deployStack.yml
+              RunOrder: 1
+        - !If
+          - NeedPipelineApprovalStage
+          - Name: ChangeSetApproval
+            Actions:
+              - InputArtifacts: []
+                Name: ChangesetApproval
+                ActionTypeId:
+                  Category: Approval
+                  Owner: AWS
+                  Version: "1"
+                  Provider: Manual
+                OutputArtifacts: []
+                Configuration:
+                  NotificationArn: !Ref ApprovalSNSTopic
+                  ExternalEntityLink: !Join
+                    - ""
+                    - - https://s3.
+                      - !Ref AWS::Region
+                      - .amazonaws.com/
+                      - !Ref CodePipelineSourceAndArtifactBucket
+                      - /
+                      - !Ref ChangeSetReportName
+                  CustomData:
+                    Please go through the url for changeset and approve for
+                    deploy
+                RunOrder: 1
+          - !Ref AWS::NoValue
+        - Name: ChangeSetDeploy
+          Actions:
+            - InputArtifacts:
+                - Name: OUT-S3Code-Lambda-ChangeSet-Deploy
+                - Name: CFCode
+                - Name: S3Code
+              Name: Deploy-ChangeSet-Execute
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: "1"
+                Provider: CloudFormation
+              OutputArtifacts:
+                - Name: OUT-S3Code-Lambda-ChangeSet-Execute-Deploy
+              Configuration:
+                RoleArn: !GetAtt CloudFormationExecutionRole.Arn
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Ref DeployStackName
+                ActionMode: CHANGE_SET_EXECUTE
+                ChangeSetName: OUT-S3Code-Lambda-ChangeSet
+                OutputFileName: Deploy-ChangeSet-Execute-Output.json
+              RunOrder: 1
+  CodePipelineNotificationRule:
+    Type: AWS::CodeStarNotifications::NotificationRule
+    Properties:
+      DetailType: FULL
+      EventTypeIds:
+        - codepipeline-pipeline-pipeline-execution-failed
+        - codepipeline-pipeline-pipeline-execution-succeeded
+      Name:
+        !Join [
+          "-",
+          [
+            "NotifyRule",
+            !FindInMap [
+              "EnvironmentNameMap",
+              "Environment",
+              !Ref "AWS::AccountId",
+            ],
+            !Ref "AWS::Region",
+            !Ref "AWS::StackName",
+          ],
+        ]
+      Resource:
+        !Join [
+          ":",
+          [
+            "arn:aws:codepipeline",
+            !Ref "AWS::Region",
+            !Ref "AWS::AccountId",
+            !Ref pipeline,
+          ],
+        ]
+      Status: ENABLED
+      Targets:
+        - TargetAddress: !Ref PipelineNotificationSNSTopic
+          TargetType: SNS
+  PipelineNotificationSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName:
+        !Join [
+          "-",
+          [
+            "Notification",
+            !FindInMap [
+              "EnvironmentNameMap",
+              "Environment",
+              !Ref "AWS::AccountId",
+            ],
+            !Ref "AWS::StackName",
+          ],
+        ]
+  PipelineNotificationSNSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref MailId
+      Protocol: email
+      TopicArn: !Ref PipelineNotificationSNSTopic
+  PipelineNotificationSNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: sns_publish_policy_id
+            Effect: Allow
+            Principal:
+              Service:
+                - codestar-notifications.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref PipelineNotificationSNSTopic
+          - Sid: sns_default_policy_id
+            Effect: Allow
+            Principal:
+              AWS:
+                - "*"
+            Action:
+              - SNS:GetTopicAttributes
+              - SNS:SetTopicAttributes
+              - SNS:AddPermission
+              - SNS:RemovePermission
+              - SNS:DeleteTopic
+              - SNS:Subscribe
+              - SNS:ListSubscriptionsByTopic
+              - SNS:Publish
+              - SNS:Receive
+            Resource: !Ref PipelineNotificationSNSTopic
+            Condition:
+              StringEquals:
+                AWS:SourceOwner: !Ref "AWS::AccountId"
+      Topics:
+        - !Ref PipelineNotificationSNSTopic
+  PipelineSourceArtifactUploadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        !Join [
+          "-",
+          [
+            PipelineArtifactUploadRole,
+            !FindInMap [
+              "EnvironmentNameMap",
+              "Environment",
+              !Ref "AWS::AccountId",
+            ],
+            !Ref "AWS::Region",
+          ],
+        ]
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              AWS:
+                - !Ref "AWS::AccountId"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: "NextNav-Infrastructure-Update-Policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - s3:ListBucket
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                Resource:
+                  - "arn:aws:s3:::nextnav-poc-cd-source*"
+Outputs:
+  StackName:
+    Description: The pipeline stack name
+    Value: !Ref AWS::StackName
+  DeploymentApprovalSNSTopic:
+    Description: Approval SNS Topic Arn
+    Value: !Ref ApprovalSNSTopic
+    Condition: NeedPipelineApprovalStage
+  PipelineArtifactBucketName:
+    Description: Source and Artifact bucket for pipeline
+    Value: !Ref CodePipelineSourceAndArtifactBucket
+    Export:
+      Name: !Join
+        - "-"
+        - - !Ref SourceAndArtifactBucketPrefix
+          - !FindInMap
+            - EnvironmentNameMap
+            - Environment
+            - !Ref AWS::AccountId
+          - !Ref AWS::Region
+  PipelineSourceArtifactUploadRoleArn:
+    Description: "NextNav Pipeline Artifact Upload Role ARN to be used by artifact_upload.sh script"
+    Value: !GetAtt PipelineSourceArtifactUploadRole.Arn
+    Export:
+      Name: NextNav-Pipeline-Artifact-Upload-Role-Arn

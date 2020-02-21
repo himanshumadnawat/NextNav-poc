@@ -1,0 +1,34 @@
+{
+  "name": "dynamodbmanager",
+  "version": "1.0.0",
+  "description": "This lambda is used to manage DynamoDB",
+  "main": "handler.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "nyc mocha test/**/**/*.test.js",
+    "lint": "eslint ./**/*.js --fix",
+    "cover": "npm test && npm run cover:report && npm run cover:merge",
+    "cover:report": "nyc report --reporter=lcov --reporter=text-summary --preserve-comments=true",
+    "cover:merge": "nyc merge .nyc_output coverage.json"
+  },
+  "eslintIgnore": [
+    "test/*"
+  ],
+  "author": "Himanshu Madnawat",
+  "dependencies": {
+    "aws-sdk": "^2.134.0"
+  },
+  "devDependencies": {
+    "aws-xray-sdk-core": "^2.3.3",
+    "eslint": "4.7.2",
+    "eslint-config-airbnb-base": "12.0.0",
+    "eslint-plugin-import": "2.7.0",
+    "eslint-plugin-promise": "3.5.0",
+    "mocha": "^4.0.1",
+    "nyc": "^14.1.1",
+    "sinon": "^4.0.1",
+    "sinon-stub-promise": "^4.0.0"
+  }
+}
